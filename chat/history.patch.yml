@@ -1,0 +1,20 @@
+- insert:
+    - id: preset-deepsleep-chat
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: deepsleep-chat
+        order: 0
+        plugins:
+          - id: chat-tools
+            name: '@dsconversation/history-import/chat-tools'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are DeepSleep, a helpful conversational assistant.
+              complete: true
+              includeRuntimeContext: false
+    - id: deepseek-chat-import
+      name: '@dsconversation/history-import'
+      config:
+        maxUploadBytes: 134217728
+        maxEntryBytes: 33554432
