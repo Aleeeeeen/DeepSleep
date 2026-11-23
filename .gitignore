@@ -1,0 +1,49 @@
+# Build outputs and local toolchains
+/out/
+/_tools/*
+!/_tools/r8-rules.txt
+/_payload/
+/_payload-scripts/debs/
+/_payload-scripts/debwork/
+/_payload-scripts/tx/
+/_payload-scripts/termux-Packages.gz
+node_modules/
+
+# Generated runtime assets and installation packages
+/app/assets/termux.tar.gz
+/app/assets/nm.tar.gz
+/app/assets/guards.bin
+*.apk
+*.aab
+*.apks
+
+# Signing materials and local credentials
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.key
+.env
+.env.*
+!.env.example
+.credentials.yaml
+.credentials.yml
+settings.yaml
+settings.yml
+local.properties
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.log
+*.tmp
+*.bak
+Thumbs.db
+.DS_Store
+
+# Virtual-window helper source (other toolchain files stay local)
+!/_tools/vdhelper/
+/_tools/vdhelper/*
+!/_tools/vdhelper/VdHelper.java
+/app/assets/vdhelper.dex
+/app/assets/payload-sha256.txt
