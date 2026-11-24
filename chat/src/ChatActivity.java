@@ -21,6 +21,8 @@ public final class ChatActivity extends Activity {
     private long mountDeadline;
     private static final int PICK_DOCUMENT = 31;
     private ValueCallback<Uri[]> pendingFile;
+    private WebHistory webHistory;
+    private String waitingShare;
     private final Runnable monitor = new Runnable() {
         @Override public void run() {
             String entry = ChatHost.entry;
@@ -42,6 +44,7 @@ public final class ChatActivity extends Activity {
                     if (isDestroyed() || !entry.equals(loaded)) return;
                     if ("true".equals(ready)) {
                         loading.setVisibility(View.GONE);
+                        openWaitingShare();
                     } else if (SystemClock.elapsedRealtime() > mountDeadline) {
                         message.setText("聊天界面加载超时，请重试。");
                         retry.setVisibility(View.VISIBLE);
@@ -70,6 +73,11 @@ public final class ChatActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if (!request.isForMainFrame()) return !local(uri);
+                if (local(uri) && "/deepsleep/open-web-history".equals(uri.getPath())) {
+                    String link = uri.getQueryParameter("share");
+                    if (link == null || WebHistory.shared(Uri.parse(link))) openHistory(link);
+                    return true;
+                }
                 if (local(uri)) return false;
                 openExternal(uri);
                 return true;
@@ -159,7 +167,47 @@ public final class ChatActivity extends Activity {
         loading.addView(retry);
         frame.addView(loading);
         setContentView(frame);
+        readShare(getIntent());
         startForegroundService(new Intent(this, ChatHost.class));
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readShare(intent);
+        if (loaded != null && loading.getVisibility() == View.GONE) openWaitingShare();
+    }
+    private void readShare(Intent intent) {
+        if (!Intent.ACTION_SEND.equals(intent.getAction()) || !"text/plain".equals(intent.getType())) return;
+        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        if (text != null && text.length() < 16000) {
+            java.util.regex.Matcher links = android.util.Patterns.WEB_URL.matcher(text);
+            while (links.find()) {
+                Uri uri = Uri.parse(links.group());
+                if (WebHistory.shared(uri)) { waitingShare = uri.buildUpon().clearQuery().fragment(null).build().toString(); break; }
+            }
+        }
+        if (waitingShare == null) Toast.makeText(this, "请使用 DeepSeek 官网生成的对话分享链接", Toast.LENGTH_LONG).show();
+        setIntent(new Intent(this, ChatActivity.class));
+    }
+    private void openWaitingShare() {
+        if (waitingShare == null) return;
+        String link = waitingShare;
+        waitingShare = null;
+        openHistory(link);
+    }
+    private void openHistory(String link) {
+        if (webHistory != null) webHistory.close();
+        try {
+            webHistory = new WebHistory(this, link == null ? WebHistory.HOME : link, archive -> {
+                String entry = ChatHost.entry;
+                if (entry == null || chat.getUrl() == null || !local(Uri.parse(chat.getUrl()))) {
+                    Toast.makeText(this, "聊天引擎已重启，请重新导入", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                Uri origin = Uri.parse(entry).buildUpon().encodedPath("").clearQuery().fragment(null).build();
+                chat.postWebMessage(new WebMessage("deepsleep-web-archive:" + archive), origin);
+            });
+        } catch (java.io.IOException e) { Toast.makeText(this, "网页导入组件加载失败", Toast.LENGTH_LONG).show(); }
     }
     private boolean local(Uri uri) {
         String entry = ChatHost.entry;
@@ -202,6 +250,7 @@ public final class ChatActivity extends Activity {
         if (chat.canGoBack()) chat.goBack(); else super.onBackPressed();
     }
     @Override public void onDestroy() {
+        if (webHistory != null) webHistory.close();
         finishPicker(null);
         ui.removeCallbacks(monitor);
         chat.destroy();
