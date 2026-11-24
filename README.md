@@ -1,4 +1,5 @@
 # DeepSleep
+本App由codex提供编程协助
 
 DeepSleep 是一款第三方 Android 聊天客户端。打开应用即可进入中文聊天页，使用 DeepSeek 账号授权后就能发消息，无需创建或粘贴个人 API Key。你也可以把 DeepSeek 网页版导出的对话带到手机上，在原来的上下文里继续聊。
 
