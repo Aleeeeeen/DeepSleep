@@ -35,7 +35,7 @@ $key = Join-Path $signing 'debug.p12'
 if (!(Test-Path $key)) {
     Run "$Jdk/bin/keytool.exe" @('-genkeypair','-storetype','PKCS12','-keystore',$key,'-storepass','android','-keypass','android','-alias','prototype','-keyalg','RSA','-keysize','3072','-validity','3650','-dname','CN=DS Chat Local Prototype')
 }
-$apk = Join-Path $out 'DeepSleep-0.3-arm64.apk'
+$apk = Join-Path $out 'DeepSleep-0.4-arm64.apk'
 Run "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'sign','--ks',$key,'--ks-key-alias','prototype','--ks-pass','pass:android','--out',$apk,"$out/aligned.apk")
 Run "$Jdk/bin/java.exe" @('-jar',"$BuildTools/lib/apksigner.jar",'verify','--verbose',$apk)
 Get-FileHash $apk

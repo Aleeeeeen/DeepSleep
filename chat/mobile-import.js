@@ -5,9 +5,16 @@ function mountMobileImport(ctx, enterConversation) {
     sheet.id = "ds-history-import";
     sheet.setAttribute("aria-labelledby", "ds-import-heading");
     sheet.innerHTML = `<form method="dialog"><h2 id="ds-import-heading">导入网页版聊天记录</h2><button aria-label="关闭导入窗口" value="close">关闭</button></form>
-      <p>选择 DeepSeek 网页版导出的原始 ZIP。已有会话会保留，重复导入会产生副本。</p>
+      <a class="website" href="/deepsleep/open-web-history">从网页版选择对话</a>
+      <p>在官网打开一条对话，再点「导入当前对话并续聊」。首次使用可能需要登录网页版。</p>
+      <details><summary>使用系统浏览器或分享链接</summary>
+      <p>可使用已登录的浏览器，在官网选好消息后生成分享链接，粘贴到下面，或通过系统分享给 DeepSleep。持有链接的人可以查看所分享的内容。</p>
+      <a href="https://chat.deepseek.com/" target="_blank" rel="noopener">打开系统浏览器</a>
+      <label>官网分享链接<input type="url" placeholder="https://chat.deepseek.com/share/…" autocomplete="off"></label>
+      <button type="button" class="open-share">打开分享对话</button></details>
+      <details><summary>从 ZIP 批量导入</summary><p>已有会话会保留，重复导入会产生副本。</p>
       <label>导出文件<input type="file" accept=".zip,application/zip,application/x-zip-compressed"></label>
-      <button type="button" class="submit" disabled>开始导入</button>
+      <button type="button" class="submit" disabled>开始导入</button></details>
       <p role="status" aria-live="polite"></p><div class="sessions"></div>`;
     const style = document.createElement("style");
     style.textContent = `#ds-history-import{box-sizing:border-box;position:fixed;inset:0;z-index:2147483647;width:min(92vw,440px);max-height:84dvh;margin:auto;overflow:auto;border:1px solid #e6e9f1;border-radius:20px;padding:22px;color:#1e2535;background:white;font:16px system-ui,sans-serif;color-scheme:light}
@@ -16,10 +23,13 @@ function mountMobileImport(ctx, enterConversation) {
       #ds-history-import label,#ds-history-import input{display:block;margin:10px 0;width:100%} #ds-history-import input{padding:8px 0}
       #ds-history-import button{font:inherit;color:#3052bf;cursor:pointer;border:0;background:none;padding:8px}
       #ds-history-import .submit{width:100%;color:white;background:#4168f4;border-radius:14px;padding:12px}
-      #ds-history-import button:disabled{opacity:.45} #ds-history-import .sessions button{display:block;width:100%;border-top:1px solid #e1e5ef;text-align:left;overflow-wrap:anywhere}`;
+      #ds-history-import button:disabled{opacity:.45} #ds-history-import .sessions button{display:block;width:100%;border-top:1px solid #e1e5ef;text-align:left;overflow-wrap:anywhere}
+      #ds-history-import .website{display:block;background:#4168f4;color:white;text-align:center;border-radius:12px;margin-top:16px;padding:12px;text-decoration:none}
+      #ds-history-import details{border-top:1px solid #e1e5ef;padding:10px 0} #ds-history-import summary{cursor:pointer}
+      #ds-history-import input[type=url]{box-sizing:border-box;padding:10px;border:1px solid #bbc4d5;border-radius:8px}`;
     document.head.append(style);
     document.body.append(sheet);
-    const file = sheet.querySelector("input");
+    const file = sheet.querySelector("input[type=file]");
     const submit = sheet.querySelector(".submit");
     const status = sheet.querySelector("[role=status]");
     const rows = sheet.querySelector(".sessions");
@@ -34,6 +44,18 @@ function mountMobileImport(ctx, enterConversation) {
         "workspace-not-found": "目标工作区不可用，请重试。"
     };
     function show() { if (!sheet.open) sheet.showModal(); }
+    sheet.querySelector(".open-share").onclick = () => {
+        const value = sheet.querySelector("input[type=url]").value.trim();
+        let link;
+        try { link = new URL(value); } catch {}
+        if (!link || link.origin !== "https://chat.deepseek.com" || link.username || link.password || !/^\/share\/[\w-]+\/?$/.test(link.pathname)) {
+            status.textContent = "请输入 DeepSeek 官网生成的对话分享链接。"; return;
+        }
+        location.assign("/deepsleep/open-web-history?share=" + encodeURIComponent(link.origin + link.pathname));
+    };
+    sheet.addEventListener("click", event => {
+        if (busy && event.target.closest("a, .open-share")) event.preventDefault();
+    }, true);
     function handleBack() {
         if (!sheet.open) return false;
         if (!busy) sheet.close();
@@ -46,11 +68,11 @@ function mountMobileImport(ctx, enterConversation) {
         if (chosen && submit.disabled) status.textContent = "请选择非空且不超过 128 MiB 的 ZIP。";
     };
     sheet.addEventListener("cancel", event => { if (busy) event.preventDefault(); });
-    submit.onclick = async () => {
-        const archive = file.files[0];
+    submit.onclick = () => importArchive(file.files[0], false);
+    async function importArchive(archive, openAfter) {
         if (!archive || busy) return;
         busy = file.disabled = submit.disabled = close.disabled = true;
-        rows.replaceChildren(); status.textContent = "正在读取 ZIP…";
+        rows.replaceChildren(); status.textContent = openAfter ? "正在保存网页对话…" : "正在读取 ZIP…";
         try {
             const workspaces = ctx.get("workspaces"), sessions = ctx.get("sessions");
             if (!workspaces || !sessions) throw Error("聊天引擎正在启动，请稍后重试。");
@@ -101,6 +123,10 @@ function mountMobileImport(ctx, enterConversation) {
                 rows.append(button);
             }
             file.value = "";
+            if (openAfter && result.sessionIds.length === 1) {
+                try { await enterConversation(result.sessionIds[0]); sheet.close(); }
+                catch { status.textContent = "对话已保存，请点下方标题打开。"; }
+            }
         } catch (err) {
             status.textContent = err.message || "导入失败，请检查 ZIP。";
             const sessions = ctx.get("sessions");
@@ -109,6 +135,18 @@ function mountMobileImport(ctx, enterConversation) {
             busy = file.disabled = close.disabled = false;
             submit.disabled = !file.files.length;
         }
-    };
-    return { show, handleBack, dispose() { controller.abort(); sheet.remove(); style.remove(); } };
+    }
+    const prefix = "deepsleep-web-archive:";
+    function onWebArchive(event) {
+        if (event.source != null || typeof event.data !== "string" || !event.data.startsWith(prefix)) return;
+        show();
+        if (busy) { status.textContent = "已有导入正在进行，请在完成后重新选择。"; return; }
+        try {
+            if (event.data.length > 8 * 1024 * 1024) throw Error();
+            const raw = atob(event.data.slice(prefix.length));
+            void importArchive(new Blob([Uint8Array.from(raw, c => c.charCodeAt(0))]), true);
+        } catch { status.textContent = "网页对话传输失败，请重试。"; }
+    }
+    window.addEventListener("message", onWebArchive);
+    return { show, handleBack, dispose() { window.removeEventListener("message", onWebArchive); controller.abort(); sheet.remove(); style.remove(); } };
 }

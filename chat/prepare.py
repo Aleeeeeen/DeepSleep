@@ -176,5 +176,6 @@ export function apply(ctx) {
         info.size = len(data)
         out.addfile(info, io.BytesIO(data))
 shutil.copyfile(ROOT / "history.patch.yml", assets / "history.patch.yml")
+shutil.copyfile(ROOT / "web-transcript.js", assets / "web-transcript.js")
 for name in ["LICENSE", "THIRD_PARTY_NOTICES.md"]:
     shutil.copyfile(ROOT.parent / name, assets / name)

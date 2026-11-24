@@ -102,8 +102,8 @@ async function check() {
     chooseLink('import');
     const upload = new DataTransfer();
     upload.items.add(new File(['zip-fixture'], 'history.zip', {type: 'application/zip'}));
-    sheet.querySelector('input').files = upload.files;
-    sheet.querySelector('input').dispatchEvent(new Event('change'));
+    sheet.querySelector('input[type=file]').files = upload.files;
+    sheet.querySelector('input[type=file]').dispatchEvent(new Event('change'));
     let uploaded = false;
     window.fetch = async (url, init) => {
         uploaded = url.pathname.endsWith('/api/deepseek-chat-import/archive') && url.searchParams.get('workspaceId') === 'current' &&
@@ -122,11 +122,53 @@ async function check() {
     expect(!panel.open && !chat.hidden && !action('login').hidden, 'sign-out returns to chat');
     dispose();
     expect(mobile.disposed && !document.documentElement.hasAttribute('data-deepsleep-mounted') && !back(), 'cleanup');
+
+    // DeepSeek recycles message elements as the user scrolls. Only a few turns
+    // are present at once, and the shared-page notice has its own negative key.
+    const list = document.createElement('div');
+    list.className = 'ds-virtual-list';
+    list.style.cssText = 'position:fixed;top:0;left:0;height:180px;width:300px;overflow:auto';
+    const track = document.createElement('div');
+    track.style.cssText = 'height:1440px;position:relative';
+    list.append(track);
+    document.body.append(list);
+    function paintRows() {
+        const start = Math.floor(list.scrollTop / 90);
+        track.replaceChildren();
+        for (let i = start; i < Math.min(16, start + 4); i++) {
+            const row = document.createElement('div');
+            row.dataset.virtualListItemKey = i === 0 ? '-999' : String(i);
+            row.style.cssText = 'position:absolute;top:' + (i * 90) + 'px';
+            if (!i) row.textContent = 'Shared conversation notice';
+            else {
+                const content = document.createElement('div');
+                content.className = i % 2 ? 'ds-collapsible-text' : 'ds-markdown ds-assistant-message-main-content';
+                content.textContent = 'Message ' + i;
+                row.append(content);
+            }
+            track.append(row);
+        }
+    }
+    list.onscroll = paintRows;
+    list.scrollTop = 450;
+    paintRows();
+    const page = new URL('https://chat.deepseek.com/share/fixture');
+    expect(readWebTranscript(new URL('https://example.org/share/fixture')) === 'wrong-page', 'reject unrelated page');
+    expect(readWebTranscript(page) === 'reading', 'start reading a shared conversation');
+    for (let i = 0; i < 120 && !window.deepSleepTranscriptJob.result; i++) {
+        paintRows();
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const transcript = window.deepSleepTranscriptJob.result;
+    expect(transcript?.messages?.length === 15 && transcript.messages.every((msg, i) =>
+        msg.text === 'Message ' + (i + 1) && msg.role === (i % 2 ? 'ASSISTANT' : 'USER')), 'all recycled messages in order');
+    expect(list.scrollTop === 450, 'restore scroll after import');
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'deepsleep-ui-'));
 const html = join(dir, 'ui.html');
 const code = ['mobile-chat.js','mobile-import.js','mobile-account.js'].map(name => readFileSync(join(__dirname, name), 'utf8')).join('\n');
+const extractor = readFileSync(join(__dirname, 'web-transcript.js'), 'utf8');
 const engine = `
 const mobile = {
     id: null, disposed: false,
@@ -137,11 +179,11 @@ const mobile = {
 };
 function createDeepSleepSessions() { return mobile; }
 `;
-writeFileSync(html, '<meta charset=utf-8><body><div id=root></div><script>' + engine + code + '\n(' + check.toString() +
+writeFileSync(html, '<meta charset=utf-8><body><div id=root></div><script>const readWebTranscript = (location) => ' + extractor + ';\n' + engine + code + '\n(' + check.toString() +
     ')().then(()=>document.body.textContent="DS_CHAT_CHECK_OK",e=>document.body.textContent="Failed: "+e.message)</script>');
 const result = spawnSync(browser, ['--headless=new','--disable-gpu','--no-first-run','--disable-background-networking',
-    '--user-data-dir=' + join(dir,'profile'),'--virtual-time-budget=3500','--dump-dom',pathToFileURL(html).href],
+    '--user-data-dir=' + join(dir,'profile'),'--virtual-time-budget=12000','--dump-dom',pathToFileURL(html).href],
     {encoding:'utf8', timeout:45000});
 if (result.status !== 0 || !result.stdout?.includes('<body>DS_CHAT_CHECK_OK</body>'))
     throw Error(result.error?.message || result.stdout?.match(/<body>Failed:[^<]+/)?.[0] || 'UI check failed');
-console.log('PASS guest launch, login, cancellation, checkout, balance, sign-out, ZIP import, session switching and Android Back');
+console.log('PASS account, ZIP import, session switching, Android Back and virtualized web transcript');
